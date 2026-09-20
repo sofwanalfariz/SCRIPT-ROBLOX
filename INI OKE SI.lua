@@ -1,58 +1,19 @@
---[[
-╔═══════════════════════════════════════════════════════════════╗
-║       Cryziie's Arsenal Script — Ultra v5.0                   ║
-║                                                               ║
-║  ULTRA AIMBOT v5.0:                                           ║
-║  • Kalman-Inspired Adaptive Prediction Engine                 ║
-║  • Strafe Pattern Detection (anti-AD-spam wiggle)             ║
-║  • Jump Arc Prediction (parabolic mid-air tracking)           ║
-║  • Spring-Damper Smooth Aim (fully customizable)              ║
-║  • Assist Mode — User Override with AimStrength               ║
-║  • Hold-to-Aim Keybind (RMB Hold / Toggle / Always On)        ║
-║  • 4 Target Priority Modes (Crosshair/HP/Distance/Threat)     ║
-║  • Auto-Switch on Kill (instant next target)                  ║
-║  • Humanization Layer (Perlin Noise micro-offsets)             ║
-║  • Dynamic FOV (scope-aware, auto-expand on idle)             ║
-║  • Sticky Visibility Strength (customizable wall-track)       ║
-║  • Target Info HUD (name, HP, dist, visibility)               ║
-║  • Smart FFA / Team auto-detection (per-frame)                ║
-║  • Multi-point wall check (configurable body parts)           ║
-║  • Full Advanced Settings Tab (prediction, smoothing, limits) ║
-║  • Save & Load Profiles via Rayfield ConfigurationSaving      ║
-║                                                               ║
-║  SMART ESP:                                                   ║
-║  • 6 individual toggles (Highlight, Name, Dist, Tracer, etc.) ║
-║  • Skeleton ESP (R6 + R15 auto-detect)                        ║
-║  • Respawn-smart tracking (CharacterAdded hooks)              ║
-║  • Periodic cache refresh                                     ║
-║  • Smart team coloring (FFA Orange, Team Red/Blue)            ║
-║                                                               ║
-║  MOVEMENT:                                                    ║
-║  • Infinite Jump / NoClip / Speed / Jump Power                ║
-╚═══════════════════════════════════════════════════════════════╝
-]]
-
--- ══════════════════════════════════════════════════════════════
---  SECTION 1: RAYFIELD UI SETUP
---  ConfigurationSaving enabled — all flags auto-persist
--- ══════════════════════════════════════════════════════════════
-
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Cryziie's Arsenal Ultra v5.0",
+    Name = "ARSENAL V.1",
     Icon = 0,
-    LoadingTitle = "Loading Ultra Arsenal Suite v5.0...",
-    LoadingSubtitle = "Presented by: Cryziie | Ultra Edition",
-    ShowText = "taking suggestions dm @Cryziie on discord",
+    LoadingTitle = "otewee bantai...",
+    LoadingSubtitle = "BY ZENOOSYNC | V1",
+    ShowText = "",
     Theme = "Default",
     ToggleUIKeybind = "K",
     DisableRayfieldPrompts = false,
     DisableBuildWarnings = false,
     ConfigurationSaving = {
         Enabled = true,
-        FolderName = "CryziieUltra",
-        FileName = "CryziieUltra_v5"
+        FolderName = "Zenoosyncv1",
+        FileName = ""
     },
     Discord = {
         Enabled = false,
@@ -207,7 +168,7 @@ end
 local function IsInDeathCooldown(player)
     local t = _deathCooldown[player]
     if not t then return false end
-    return (tick() - t) < 0.15
+    return (tick() - t) < 0.25
 end
 
 -- ══════════════════════════════════════════════════════════════
@@ -217,8 +178,9 @@ end
 
 local GameMode = {
     IsFFA         = false,
+    TeamSize      = 1,   -- Fitur Baru: Deteksi kapasitas tim (1=Solo/FFA, 2=Duos, 4=Squads, dst)
     LastCheck     = 0,
-    CheckInterval = 0.1,
+    CheckInterval = 0.5, -- Dioptimasi dari 0.1 ke 0.5 detik agar tidak membuat lag / fps drop
 }
 
 function GameMode:DetectMode()
@@ -227,18 +189,30 @@ function GameMode:DetectMode()
     self.LastCheck = now
 
     local teams = TeamsService:GetTeams()
-    if #teams == 0 then
+    local players = Players:GetPlayers()
+    local totalPlayers = #players
+
+    -- Jika tidak ada tim di game, otomatis FFA
+    if #teams == 0 or totalPlayers < 2 then
         self.IsFFA = true
+        self.TeamSize = 1
         return
     end
 
     local teamCounts = {}
-    local withTeam, withoutTeam, total = 0, 0, 0
+    local withTeam = 0
+    local withoutTeam = 0
+    local maxInOneTeam = 0
 
-    for _, player in ipairs(Players:GetPlayers()) do
-        total = total + 1
+    for _, player in ipairs(players) do
         if player.Team then
             teamCounts[player.Team] = (teamCounts[player.Team] or 0) + 1
+            
+            -- Lacak jumlah pemain terbanyak dalam satu tim
+            if teamCounts[player.Team] > maxInOneTeam then
+                maxInOneTeam = teamCounts[player.Team]
+            end
+            
             withTeam = withTeam + 1
         else
             withoutTeam = withoutTeam + 1
@@ -246,32 +220,77 @@ function GameMode:DetectMode()
     end
 
     local distinctTeams = 0
-    for _ in pairs(teamCounts) do distinctTeams = distinctTeams + 1 end
+    for _ in pairs(teamCounts) do 
+        distinctTeams = distinctTeams + 1 
+    end
 
-    self.IsFFA = (distinctTeams <= 1 or withoutTeam > withTeam or total < 2)
+    -- 🎯 Heuristik Pintar (Smart Detection):
+    if withoutTeam >= withTeam and totalPlayers > 1 then
+        -- 1. Lebih banyak player tanpa tim dibanding yang punya tim -> Mode FFA (Contoh: Da Hood)
+        self.IsFFA = true
+    elseif distinctTeams > 1 and maxInOneTeam <= 1 then
+        -- 2. Tiap player punya tim sendiri-sendiri -> Mode FFA / Solos (Contoh: Bedwars Solo)
+        self.IsFFA = true
+    elseif distinctTeams <= 1 and totalPlayers > 1 then
+        -- 3. Cuma ada 1 tim aktif untuk semua orang -> Mode FFA (Contoh: Game Deathmatch tanpa tim)
+        self.IsFFA = true
+    else
+        self.IsFFA = false
+    end
+
+    -- 👥 Deteksi ukuran tim (Solo = 1, Duos = 2, Trios = 3, Squads = 4)
+    if self.IsFFA then
+        self.TeamSize = 1
+    else
+        -- Ukuran tim diambil dari jumlah anggota tim yang paling banyak saat itu
+        self.TeamSize = maxInOneTeam
+    end
 end
 
 function GameMode:IsEnemy(player)
+    -- 1. Pengecekan Dasar: Jangan pernah menargetkan diri sendiri!
+    if player == LocalPlayer then return false end
+
     self:DetectMode()
-    if self.IsFFA then return true end
+
+    -- ⚔️ Pengecekan Musuh Pintar (FFA Mode)
+    if self.IsFFA then 
+        -- Jika mode FFA, SEMUA ORANG selain diri sendiri adalah musuh
+        return true 
+    end
+    
+    -- 🛡️ Pengecekan Musuh Pintar (Team Mode)
+    -- Jika LocalPlayer (kita) belum masuk tim, amannya anggap semua orang musuh
     if not LocalPlayer.Team then return true end
-    if not player.Team then return false end
-    if LocalPlayer.Team ~= player.Team then return true end
-    if LocalPlayer.TeamColor ~= player.TeamColor then return true end
+    
+    -- Jika player target tidak punya tim di mode Team, anggap dia musuh (karena bukan di tim kita)
+    if not player.Team then return true end 
+
+    -- Jika nama tim atau warna tim berbeda, berarti dia musuh
+    if LocalPlayer.Team ~= player.Team or LocalPlayer.TeamColor ~= player.TeamColor then 
+        return true 
+    end
+    
+    -- Jika lolos semua pengecekan di atas, berarti dia adalah teman satu tim
     return false
 end
 
 function GameMode:GetTeamDisplayColor(player)
+    -- Berikan warna berbeda (Hijau) jika ESP/Render me-render diri sendiri
+    if player == LocalPlayer then
+        return Color3.fromRGB(50, 255, 50) 
+    end
+
     self:DetectMode()
+    
     if self.IsFFA then
-        return Color3.fromRGB(255, 85, 35)
+        return Color3.fromRGB(255, 85, 35) -- Oranye/Merah Terang untuk semua musuh FFA
     elseif self:IsEnemy(player) then
-        return Color3.fromRGB(255, 40, 40)
+        return Color3.fromRGB(255, 40, 40) -- Merah untuk musuh (beda tim)
     else
-        return Color3.fromRGB(40, 180, 255)
+        return Color3.fromRGB(40, 180, 255) -- Biru untuk teman satu tim (Team Mode)
     end
 end
-
 -- ══════════════════════════════════════════════════════════════
 --  SECTION 7: OPTIMIZED VISIBILITY CHECK
 --  Cached filter, throttled rebuild, multi-point
@@ -321,33 +340,57 @@ local function IsVisibleAdvanced(targetChar, targetPos)
 end
 
 -- ══════════════════════════════════════════════════════════════
---  SECTION 8: PREDICTION ENGINE v5.0
---  Kalman-adaptive, strafe detection, jump arc, NO teleport cap
+--  SECTION 8: PREDICTION ENGINE v6.0 (ULTIMATE SMART TRACKING)
+--  Ping Compensation, 3D Strafe Detection, Dynamic Gravity, Anti-Dodge
 -- ══════════════════════════════════════════════════════════════
 
 local PredictionData = {}
-local ROBLOX_GRAVITY = 196.2
+local Players = game:GetService("Players")
 
--- Configurable prediction parameters (exposed to UI)
+-- Configurable prediction parameters (Tuned for Real-time Precision)
 local PredictionConfig = {
-    VelocitySmoothing    = 15,   -- Base EMA speed for velocity (higher = snappier)
-    AccelSmoothing       = 8,    -- Base EMA speed for acceleration
-    AccelCap             = 800,  -- Max acceleration magnitude
-    VelocityCap          = 600,  -- Max velocity magnitude (0 = unlimited)
-    LookAheadMultiplier  = 4,    -- dt * this = look-ahead time
-    LookAheadMax         = 0.2,  -- Max look-ahead seconds
-    ConfidenceGainRate   = 4,    -- How fast confidence builds
-    ConfidenceLossRate   = 6,    -- How fast confidence drops on bad prediction
-    StrafeSensitivity    = 3,    -- Zero-crossings needed to detect strafe
-    StrafeWindow         = 0.8,  -- Seconds of history for strafe detection
-    StrafeDampen         = 0.25, -- Velocity multiplier during strafe
-    JumpArcEnabled       = true, -- Use parabolic jump prediction
-    JumpThreshold        = 12,   -- Y velocity threshold for airborne
-    DirectionReactFast   = 2.5,  -- Beta multiplier on sharp direction change
-    DirectionReactMed    = 1.6,  -- Beta multiplier on medium direction change
-    EarlyBeta            = 0.85, -- Beta for first few samples
-    EarlySamples         = 3,    -- How many samples before normal filtering
+    VelocitySmoothing    = 18,   -- Lebih responsif untuk tracking
+    AccelSmoothing       = 12,   -- Prediksi akselerasi lebih tajam
+    AccelCap             = 1000, -- Batas akselerasi
+    VelocityCap          = 800,  -- Batas kecepatan
+    PingCompensation     = true, -- 🔥 Fitur Baru: Hitung latensi/ping player
+    LookAheadMultiplier  = 1.5,  -- Base multiplier untuk DeltaTime
+    LookAheadMax         = 0.5,  -- Maksimum lookahead detik (Diperbesar untuk ping)
+    ConfidenceGainRate   = 5,    
+    ConfidenceLossRate   = 8,    
+    StrafeSensitivity    = 2,    -- 🔥 Lebih sensitif mendeteksi zig-zag (A-D spam)
+    StrafeWindow         = 0.6,  -- Jendela waktu analisis zig-zag
+    StrafeDampen         = 0.15, -- Mengurangi overshoot drastis saat musuh zig-zag
+    JumpArcEnabled       = true, -- Pakai prediksi parabola
+    JumpThreshold        = 10,   -- Y velocity minimal untuk terbaca melayang
+    DirectionReactFast   = 3.5,  -- Reaksi instan saat musuh belok mendadak / putar balik
+    DirectionReactMed    = 2.0,  -- Reaksi sedang saat musuh belok melengkung (Curved dodge)
+    EarlyBeta            = 0.95, -- Kecepatan adaptasi di beberapa frame pertama
+    EarlySamples         = 5,    
 }
+
+-- 🌐 Fungsi Cerdas: Ambil gravitasi aktual game (Bukan hardcode 196.2)
+local function GetGravity()
+    return workspace.Gravity or 196.2
+end
+
+-- 📡 Fungsi Cerdas: Ambil Ping Player secara Real-time (Ping Compensation)
+local function GetPing()
+    local ping = 0.05 -- Default 50ms (Jika gagal)
+    pcall(function()
+        local lp = Players.LocalPlayer
+        if lp and lp:GetNetworkPing() then
+            ping = lp:GetNetworkPing()
+        else
+            -- Alternatif server stats jika GetNetworkPing belum di-load
+            local stats = game:GetService("Stats"):FindFirstChild("Network")
+            if stats and stats:FindFirstChild("ServerStatsItem") then
+                ping = stats:ServerStatsItem("Data Ping"):GetValue() / 1000
+            end
+        end
+    end)
+    return math.clamp(ping, 0.01, 0.3) -- Batasi hitungan dari 10ms sampai max 300ms
+end
 
 local function UpdatePrediction(player, worldPos, dt)
     dt = math.max(dt, 0.0001)
@@ -358,88 +401,98 @@ local function UpdatePrediction(player, worldPos, dt)
         PredictionData[player] = {
             lastPos = worldPos, velocity = Vector3.zero, acceleration = Vector3.zero,
             smoothVelocity = Vector3.zero, predictedPos = worldPos, prevVelocity = Vector3.zero,
-            sampleCount = 0, confidence = 0,
+            sampleCount = 0, confidence = 0, lastDir = Vector3.zero,
             strafeHistory = {}, strafing = false, strafeCenter = worldPos,
             airborne = false, jumpTime = 0,
         }
         return
     end
 
-    -- Raw velocity
+    -- Hitung kecepatan aktual (Raw Velocity)
     local rawVelocity = (worldPos - d.lastPos) / dt
     if cfg.VelocityCap > 0 and rawVelocity.Magnitude > cfg.VelocityCap then
         rawVelocity = rawVelocity.Unit * cfg.VelocityCap
     end
 
-    -- Kalman confidence
+    -- Update Kalman Confidence (Seberapa akurat / meleset prediksi di frame sebelumnya)
     local predErr = (worldPos - d.predictedPos).Magnitude
-    if predErr < 2 then
+    if predErr < 1.5 then
         d.confidence = math.min(d.confidence + dt * cfg.ConfidenceGainRate, 1)
-    elseif predErr < 8 then
-        d.confidence = math.clamp(d.confidence - dt * 1.5, 0.15, 1)
+    elseif predErr < 6 then
+        d.confidence = math.clamp(d.confidence - dt * 2, 0.2, 1)
     else
         d.confidence = math.max(d.confidence - dt * cfg.ConfidenceLossRate, 0)
     end
 
-    -- Adaptive beta
-    local baseBeta = math.clamp(1 - math.exp(-cfg.VelocitySmoothing * dt), 0.05, 0.9)
+    -- Adaptive Beta (Dynamic Smoothing Engine)
+    local baseBeta = math.clamp(1 - math.exp(-cfg.VelocitySmoothing * dt), 0.05, 0.95)
     local beta
 
-    d.sampleCount = math.min(d.sampleCount + 1, 30)
+    d.sampleCount = math.min(d.sampleCount + 1, 40)
     if d.sampleCount < cfg.EarlySamples then
         beta = cfg.EarlyBeta
     else
-        beta = baseBeta * (1.2 - d.confidence * 0.6)
-        beta = math.clamp(beta, 0.05, 0.95)
+        beta = baseBeta * (1.2 - d.confidence * 0.5)
+        beta = math.clamp(beta, 0.05, 0.98)
     end
 
-    -- Direction change reaction
+    -- 🔥 REAKSI BELOKAN / DIRECTION CHANGE (Mendeteksi Anti-Aim / Dodge 3D)
+    local curDir = rawVelocity.Magnitude > 0.1 and rawVelocity.Unit or d.lastDir
     if d.velocity.Magnitude > 2 and rawVelocity.Magnitude > 2 then
-        local dot = d.velocity.Unit:Dot(rawVelocity.Unit)
-        if dot < 0.1 then
-            beta = math.clamp(beta * cfg.DirectionReactFast, 0.3, 0.95)
-        elseif dot < 0.4 then
-            beta = math.clamp(beta * cfg.DirectionReactMed, 0.15, 0.9)
+        local dot = d.lastDir:Dot(curDir)
+        if dot < 0.1 then       -- Musuh belok tajam 90 derajat atau balik arah (Jumpscare)
+            beta = math.clamp(beta * cfg.DirectionReactFast, 0.4, 0.98)
+        elseif dot < 0.5 then   -- Musuh lari melengkung
+            beta = math.clamp(beta * cfg.DirectionReactMed, 0.2, 0.95)
         end
     end
+    d.lastDir = curDir
 
-    -- Update velocity
+    -- Terapkan perubahan pada Velocity
     d.prevVelocity = d.velocity
     d.velocity = d.velocity:Lerp(rawVelocity, beta)
 
-    -- Update acceleration
+    -- Terapkan perubahan pada Acceleration (Centripetal force untuk Curved Paths)
     local rawAccel = (d.velocity - d.prevVelocity) / dt
     if rawAccel.Magnitude > cfg.AccelCap then rawAccel = rawAccel.Unit * cfg.AccelCap end
-    local accelBeta = math.clamp(1 - math.exp(-cfg.AccelSmoothing * dt), 0.05, 0.6)
+    local accelBeta = math.clamp(1 - math.exp(-cfg.AccelSmoothing * dt), 0.05, 0.7)
     d.acceleration = d.acceleration:Lerp(rawAccel, accelBeta)
 
-    -- Smooth velocity for strafe
-    local smoothBeta = math.clamp(1 - math.exp(-5 * dt), 0.02, 0.4)
+    -- Smooth velocity khusus untuk peredam pusat zig-zag (Strafe Center)
+    local smoothBeta = math.clamp(1 - math.exp(-6 * dt), 0.02, 0.5)
     d.smoothVelocity = d.smoothVelocity:Lerp(d.velocity, smoothBeta)
 
-    -- STRAFE DETECTION
+    -- 🔥 STRAFE DETECTION 3D PINTAR (Menggunakan Sumbu Tegak Lurus)
     local now = tick()
-    local hx = d.velocity.X
-    local sign = hx > 1 and 1 or (hx < -1 and -1 or 0)
-    if sign ~= 0 then
-        d.strafeHistory[#d.strafeHistory + 1] = { sign = sign, time = now }
+    local horizVel = Vector3.new(d.velocity.X, 0, d.velocity.Z)
+    if horizVel.Magnitude > 2 then
+        local moveDir = horizVel.Unit
+        local rightDir = Vector3.new(0, 1, 0):Cross(moveDir) -- Mendapatkan vektor sisi (kiri/kanan badan)
+        local strafeAccel = rawAccel:Dot(rightDir)           -- Menghitung daya tolak menyamping
+        
+        -- Deteksi sentakan A-D mendadak ke kiri atau kanan (Thresold: 40 magnitude)
+        local sign = strafeAccel > 40 and 1 or (strafeAccel < -40 and -1 or 0)
+        if sign ~= 0 then
+            if #d.strafeHistory == 0 or d.strafeHistory[#d.strafeHistory].sign ~= sign then
+                d.strafeHistory[#d.strafeHistory + 1] = { sign = sign, time = now }
+            end
+        end
     end
+    
+    -- Buang data zig-zag yang sudah lawas/kadaluarsa
     while #d.strafeHistory > 0 and (now - d.strafeHistory[1].time) > cfg.StrafeWindow do
         table.remove(d.strafeHistory, 1)
     end
-    local crossings = 0
-    for i = 2, #d.strafeHistory do
-        if d.strafeHistory[i].sign ~= d.strafeHistory[i - 1].sign then crossings = crossings + 1 end
-    end
-    d.strafing = crossings >= cfg.StrafeSensitivity
+    
+    d.strafing = #d.strafeHistory >= cfg.StrafeSensitivity
     if d.strafing then
-        d.strafeCenter = d.strafeCenter:Lerp(worldPos, math.clamp(dt * 5, 0.05, 0.3))
+        d.strafeCenter = d.strafeCenter:Lerp(worldPos, math.clamp(dt * 6, 0.05, 0.4))
     end
 
-    -- AIRBORNE DETECTION
+    -- ✈️ AIRBORNE DETECTION (Deteksi Jatuh / Lompat Presisi)
     local yVel = d.velocity.Y
     local wasAir = d.airborne
-    d.airborne = math.abs(yVel) > cfg.JumpThreshold
+    d.airborne = yVel > cfg.JumpThreshold or yVel < -cfg.JumpThreshold
     if d.airborne and not wasAir then d.jumpTime = 0 end
     if d.airborne then d.jumpTime = d.jumpTime + dt end
 
@@ -451,22 +504,30 @@ local function PredictPosition(player, worldPos, dt)
     if not d or d.sampleCount < 2 then return worldPos end
     local cfg = PredictionConfig
 
-    local lookAhead = math.clamp(dt * cfg.LookAheadMultiplier, 0, cfg.LookAheadMax)
+    -- 📡 PING COMPENSATION: Tambahkan latensi jaringan murni ke waktu lookahead
+    local pingOffset = cfg.PingCompensation and GetPing() or 0
+    local lookAhead = math.clamp((dt * cfg.LookAheadMultiplier) + pingOffset, 0, cfg.LookAheadMax)
+    
     local predicted
 
     if d.strafing then
-        local centerBlend = d.strafeCenter:Lerp(worldPos, 0.7)
+        -- 🛑 Anti-Strafe: Jika musuh panik A-D spam, tarik paksa aim ke "Center Mass" dari rute mereka
+        local centerBlend = d.strafeCenter:Lerp(worldPos, 0.6)
         predicted = centerBlend + d.smoothVelocity * (lookAhead * cfg.StrafeDampen)
-    elseif cfg.JumpArcEnabled and d.airborne and d.jumpTime < 2 then
+    elseif cfg.JumpArcEnabled and d.airborne and d.jumpTime < 1.5 then
+        -- 🚀 Jump Arc Dinamis (Bebas dari hardcoded gravitasi)
         local t = lookAhead
-        predicted = worldPos + d.velocity * t + Vector3.new(0, -ROBLOX_GRAVITY, 0) * (0.5 * t * t)
+        local gravity = GetGravity()
+        predicted = worldPos + d.velocity * t + Vector3.new(0, -gravity, 0) * (0.5 * t * t)
     else
+        -- 🎯 Standar Prediksi Linear 2nd-Order (Termasuk pergerakan kurva/membelok karena ada Acceleration)
         predicted = worldPos + d.velocity * lookAhead + d.acceleration * (0.5 * lookAhead * lookAhead)
     end
 
     d.predictedPos = predicted
 
-    local blend = math.clamp(d.confidence * 0.7 + 0.2, 0.2, 0.9)
+    -- Terakhir, campur prediksi berdasarkan rasio Confidence Engine
+    local blend = math.clamp(d.confidence * 0.8 + 0.2, 0.2, 1.0)
     return worldPos:Lerp(predicted, blend)
 end
 
@@ -565,601 +626,474 @@ local function UpdateTargetHUD(info, isVisible)
 end
 
 -- ══════════════════════════════════════════════════════════════
---  SECTION 10: AIMBOT SYSTEM v5.0
---  Fully customizable aim engine
+--  SECTION 10: AIMBOT SYSTEM (PRESET ARCHITECTURE & BALLISTIC ENGINE)
+--  Drop-in replacement for Section 10 & Section 10B
 -- ══════════════════════════════════════════════════════════════
 
-local Aimbot = {
-    -- Core
-    Enabled       = false,
-    AimPart       = "Head",
-    Smoothing     = 6,
-    FOVRadius     = 120,
-    BaseFOVRadius = 120,
-    MaxDistance    = 100000,
-    MinDistance    = 0,
-    TeamCheck     = true,
-    VisCheck      = false,
-    Prediction    = true,
-    ShowFOV       = false,
-    ShowTracer    = true,
-    SnapMode      = false,
-
-    -- Assist
-    AimStrength      = 0.65,
-    AimKeyMode       = "Always On",
-    PriorityMode     = "Crosshair",
-    AutoSwitch       = true,
-    Humanize         = false,
-    HumanizeStrength = 2,
-    DynamicFOV       = true,
-    StickyVis        = true,
-    StickyVisStrength = 0.2,
-    ShowTargetHUD    = true,
-
-    -- Smooth aim tuning
-    RampUpTime       = 0.15,
-    MaxAngularSpeed  = 720,
-    UnlockThreshold  = 2.5,
-    GracePeriod      = 0.35,
-    AutoSwitchRampUp = 0.08,
-
-    -- State (internal)
-    LockedPlayer = nil, LockedInfo = nil, OccludedTime = 0,
-    LockAge = 0, LastTargetScreenPos = nil, AimKeyActive = false,
-    CurrentFOVRadius = 120, IgnoredNames = {},
-    HumanizeSeed = math.random(0, 10000), LastTargetVisible = false,
-
-    -- Auto-Target System
-    AutoTargetEnabled        = true,
-    AutoTargetFullScan       = true,
-    AutoTargetMaxRange       = 500,
-    AutoTargetFOVPriority    = true,
-    AutoTargetSmoothTransition = true,
-    AutoTargetTransitionSpeed  = 4,
-    AutoTargetScanBehind     = true,
-    AutoTargetBehindSpeed    = 2.5,
-    AutoTargetCycleDelay     = 0.15,
-    _isTransitioningBehind   = false,
-    _transitionStartTime     = 0,
+local Presets = {
+    ["Low"] = {
+        FOVRadius        = 200,
+        Smoothing        = 13.0,
+        AimStrength      = 0.38,
+        MaxAngularSpeed  = 380,
+        PredictionScale  = 0.85,
+        Humanize         = true,
+        HumanizeStrength = 2.8,
+        TriggerStrength  = 0.28,
+        AutoSwitchSpeed  = 12.0,
+    },
+    ["Standard"] = {
+        FOVRadius        = 250,
+        Smoothing        = 7.5,
+        AimStrength      = 0.65,
+        MaxAngularSpeed  = 680,
+        PredictionScale  = 1.00,
+        Humanize         = true,
+        HumanizeStrength = 1.4,
+        TriggerStrength  = 0.48,
+        AutoSwitchSpeed  = 22.0,
+    },
+    ["Natural"] = {
+        FOVRadius        = 300,
+        Smoothing        = 9.5,
+        AimStrength      = 0.52,
+        MaxAngularSpeed  = 520,
+        PredictionScale  = 1.00,
+        Humanize         = true,
+        HumanizeStrength = 2.1,
+        TriggerStrength  = 0.38,
+        AutoSwitchSpeed  = 16.0,
+    },
+    ["Pro"] = {
+        FOVRadius        = 240,
+        Smoothing        = 3.2,
+        AimStrength      = 0.92,
+        MaxAngularSpeed  = 1400,
+        PredictionScale  = 1.15,
+        Humanize         = false,
+        HumanizeStrength = 0.0,
+        TriggerStrength  = 0.80,
+        AutoSwitchSpeed  = 35.0,
+    },
 }
+
+local TriggerAssist = nil -- Forward declaration
+
+local Aimbot = {
+    -- Core Options
+    Enabled             = false,
+    CurrentPreset       = "Standard",
+    AimPart             = "Head",
+    TeamCheck           = true,
+    VisCheck            = false,
+    Prediction          = true,
+    ShowFOV             = false,
+    SnapMode            = false,
+    AimKeyMode          = "Always On", -- "Always On", "Hold RMB", "Toggle RMB"
+    AimKeyActive        = false,
+
+    -- Auto-Target Engine
+    AutoSwitch          = true,
+    AutoTarget360       = true,
+    MaxDistance         = 2000,
+    MinDistance         = 0,
+
+    -- Preset-Managed Active Variables
+    FOVRadius           = 250,
+    BaseFOVRadius       = 250,
+    CurrentFOVRadius    = 250,
+    Smoothing           = 7.5,
+    AimStrength         = 0.65,
+    MaxAngularSpeed     = 680,
+    PredictionScale     = 1.0,
+    Humanize            = true,
+    HumanizeStrength    = 1.4,
+
+    -- Ballistic & Physics Constants
+    BulletSpeed         = 3000, -- Kecepatan rata-rata peluru untuk kalkulasi lead-time
+    GravityConstant     = 196.2,
+
+    -- Internal Tracking States
+    LockedPlayer        = nil,
+    LockedInfo          = nil,
+    OccludedTime        = 0,
+    LockAge             = 0,
+    IgnoredNames        = {},
+    HumanizeSeed        = math.random(1, 1e5),
+    LastScreenCenter    = Vector2.zero,
+}
+
+-- Menerapkan konfigurasi preset secara otomatis
+function Aimbot:ApplyPreset(presetName)
+    local cfg = Presets[presetName] or Presets["Standard"]
+    self.CurrentPreset    = presetName
+    self.BaseFOVRadius    = cfg.FOVRadius
+    self.CurrentFOVRadius = cfg.FOVRadius
+    self.Smoothing        = cfg.Smoothing
+    self.AimStrength      = cfg.AimStrength
+    self.MaxAngularSpeed  = cfg.MaxAngularSpeed
+    self.PredictionScale  = cfg.PredictionScale
+    self.Humanize         = cfg.Humanize
+    self.HumanizeStrength = cfg.HumanizeStrength
+
+    if TriggerAssist then
+        TriggerAssist.Strength = cfg.TriggerStrength
+    end
+end
 
 function Aimbot:GetTargetInfo(player)
     if not IsAlive(player) then return nil end
-    if IsInDeathCooldown(player) then return nil end
+    if IsInDeathCooldown and IsInDeathCooldown(player) then return nil end
+
     local char = player.Character
     local aimPart = GetBodyPart(char, self.AimPart)
     if not aimPart or not aimPart.Parent then return nil end
+
     local worldPos = aimPart.Position
 
-    -- Anti-ragdoll: validate position is sane before using it
-    if not IsPositionSane(player, worldPos) then
-        local frozen = GetFrozenPosition(player)
-        if frozen then
-            worldPos = frozen
-        end
-    else
+    -- Anti-ragdoll & Desync Position Sanitizer
+    if IsPositionSane and not IsPositionSane(player, worldPos) then
+        local frozen = GetFrozenPosition and GetFrozenPosition(player)
+        if frozen then worldPos = frozen else return nil end
+    elseif CacheValidPosition then
         CacheValidPosition(player, worldPos)
     end
 
     local screenPos3, onScreen = Camera:WorldToViewportPoint(worldPos)
     local screenPos = Vector2.new(screenPos3.X, screenPos3.Y)
-    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    local dist3D = myRoot and (worldPos - myRoot.Position).Magnitude or math.huge
+    local camPos = Camera.CFrame.Position
+    local dist3D = (worldPos - camPos).Magnitude
     local hum = char:FindFirstChildOfClass("Humanoid")
+
     return {
-        player = player, character = char, name = player.DisplayName or player.Name,
-        health = hum and hum.Health or 0, maxHealth = hum and hum.MaxHealth or 100,
-        worldPos = worldPos, screenPos = screenPos, depth = screenPos3.Z,
-        onScreen = onScreen, dist3D = dist3D
+        player    = player,
+        character = char,
+        aimPart   = aimPart,
+        name      = player.DisplayName or player.Name,
+        health    = hum and hum.Health or 100,
+        maxHealth = hum and hum.MaxHealth or 100,
+        worldPos  = worldPos,
+        screenPos = screenPos,
+        depth     = screenPos3.Z,
+        onScreen  = onScreen,
+        dist3D    = dist3D
     }
 end
 
-function Aimbot:ScoreTarget(info, center)
-    local sd = (info.screenPos - center).Magnitude
-    if self.PriorityMode == "Lowest HP" then
-        return info.health + sd * 0.1
-    elseif self.PriorityMode == "Nearest" then
-        return info.dist3D + sd * 0.3
-    elseif self.PriorityMode == "Threat" then
-        local score = sd * 0.5
-        local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        local eRoot = info.character and info.character:FindFirstChild("HumanoidRootPart")
-        if myRoot and eRoot then
-            local d2m = (myRoot.Position - eRoot.Position)
-            if d2m.Magnitude > 1 then
-                score = score - eRoot.CFrame.LookVector:Dot(d2m.Unit) * 120
-            end
+-- Evaluasi Vektor Ancaman (Threat Vector) & Pinalti Sudut yang Akurat
+function Aimbot:CalculateTargetScore(info, center)
+    local screenDelta = (info.screenPos - center).Magnitude
+    local camCF = Camera.CFrame
+    local toTarget = (info.worldPos - camCF.Position).Unit
+    local lookDot = camCF.LookVector:Dot(toTarget) -- 1 = tengah crosshair, -1 = tepat di belakang
+
+    local anglePenalty = (1 - lookDot) * 160.0
+    local distPenalty  = (info.dist3D / 50.0) * 8.0
+    local hpFactor     = (info.health / math.max(info.maxHealth, 1)) * 25.0
+
+    -- Bonus Prioritas Musuh yang Berlari Menyerang
+    local threatBonus = 0
+    local eRoot = info.character:FindFirstChild("HumanoidRootPart")
+    if eRoot and eRoot.AssemblyLinearVelocity.Magnitude > 1 then
+        local velUnit = eRoot.AssemblyLinearVelocity.Unit
+        local toLocal = (camCF.Position - info.worldPos).Unit
+        local approachDot = velUnit:Dot(toLocal)
+        if approachDot > 0.3 then
+            threatBonus = approachDot * 35.0
         end
-        return score + (info.health / math.max(info.maxHealth, 1)) * 20
-    else
-        return sd + (info.health / math.max(info.maxHealth, 1)) * 30 + math.min(info.dist3D * 0.01, 20)
     end
+
+    return (screenDelta + anglePenalty + distPenalty + hpFactor) - threatBonus
 end
 
 function Aimbot:IsLockValid(dt)
     local p = self.LockedPlayer
     if not p or not p.Parent then return false end
 
-    -- Early exit: check humanoid death state before reading any positions
-    -- This prevents the 1-2 frame delay where ragdoll position gets read
-    local pChar = p.Character
-    if pChar then
-        local hum = pChar:FindFirstChildOfClass("Humanoid")
-        if hum and (hum.Health <= 0 or hum:GetState() == Enum.HumanoidStateType.Dead) then
-            return false
-        end
-        if not pChar:FindFirstChild("HumanoidRootPart") then
-            return false
-        end
+    local char = p.Character
+    if not char then return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 or hum:GetState() == Enum.HumanoidStateType.Dead then
+        return false
     end
 
     if not IsAlive(p) then return false end
-    if IsInDeathCooldown(p) then return false end
+    if IsInDeathCooldown and IsInDeathCooldown(p) then return false end
     if self.TeamCheck and not GameMode:IsEnemy(p) then return false end
     if table.find(self.IgnoredNames, p.Name) then return false end
 
     local info = self:GetTargetInfo(p)
-    if not info then return false end
-    if info.dist3D > self.MaxDistance then return false end
-    if self.MinDistance > 0 and info.dist3D < self.MinDistance then return false end
-
-    -- User override breakout
-    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    local sd = (info.screenPos - center).Magnitude
-    if sd > self.CurrentFOVRadius * self.UnlockThreshold then
+    if not info or info.dist3D > self.MaxDistance or info.dist3D < self.MinDistance then
         return false
     end
 
-    -- Visibility with grace
+    local center = self.LastScreenCenter
+    local screenDelta = (info.screenPos - center).Magnitude
+    if not self.AutoTarget360 and screenDelta > (self.CurrentFOVRadius * 1.8) then
+        return false
+    end
+
+    -- Pengecekan Raycast Dinding
     if self.VisCheck then
         if not IsVisibleAdvanced(info.character, info.worldPos) then
             self.OccludedTime = self.OccludedTime + dt
-            self.LastTargetVisible = false
-            if self.OccludedTime > self.GracePeriod then return false end
+            if self.OccludedTime > 0.25 then return false end
         else
             self.OccludedTime = 0
-            self.LastTargetVisible = true
         end
-    else
-        self.LastTargetVisible = true
     end
+
     return true
 end
 
 function Aimbot:AcquireTarget()
-    local center
-    if self.AutoSwitch and self.LastTargetScreenPos then
-        center = self.LastTargetScreenPos
-        self.LastTargetScreenPos = nil
-    else
-        center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    end
-    local fovCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-
-    local best, bestScore = nil, math.huge
-    local bestBehind, bestBehindScore = nil, math.huge
+    local center = self.LastScreenCenter
+    local bestTarget = nil
+    local bestScore = math.huge
 
     for _, player in ipairs(Players:GetPlayers()) do
         if player == LocalPlayer or not IsAlive(player) then continue end
-        if IsInDeathCooldown(player) then continue end
+        if IsInDeathCooldown and IsInDeathCooldown(player) then continue end
         if self.TeamCheck and not GameMode:IsEnemy(player) then continue end
         if table.find(self.IgnoredNames, player.Name) then continue end
+
         local info = self:GetTargetInfo(player)
         if not info then continue end
-        if info.dist3D > self.MaxDistance then continue end
-        if self.MinDistance > 0 and info.dist3D < self.MinDistance then continue end
+        if info.dist3D > self.MaxDistance or info.dist3D < self.MinDistance then continue end
 
-        -- Phase 1: FOV scan (on-screen, within FOV circle)
-        local inFOV = info.onScreen and info.depth > 0
-            and (info.screenPos - fovCenter).Magnitude <= self.CurrentFOVRadius
+        local inFOV = info.onScreen and info.depth > 0 and (info.screenPos - center).Magnitude <= self.CurrentFOVRadius
 
-        if inFOV then
-            if self.VisCheck and not IsVisibleAdvanced(info.character, info.worldPos) then continue end
-            local score = self:ScoreTarget(info, center)
+        if inFOV or self.AutoTarget360 then
+            if self.VisCheck and not IsVisibleAdvanced(info.character, info.worldPos) then
+                continue
+            end
+
+            local score = self:CalculateTargetScore(info, center)
+            if not inFOV then
+                score = score + 250.0 -- Pinalti target di luar viewport
+            end
+
             if score < bestScore then
                 bestScore = score
-                best = player
-            end
-        elseif self.AutoTargetEnabled and self.AutoTargetFullScan then
-            -- Phase 2: 360° scan (any direction, including behind)
-            if self.AutoTargetMaxRange > 0 and info.dist3D > self.AutoTargetMaxRange then continue end
-            if self.VisCheck and not IsVisibleAdvanced(info.character, info.worldPos) then continue end
-
-            -- 3D angle-based scoring for off-screen targets
-            local dirToTarget = (info.worldPos - Camera.CFrame.Position)
-            if dirToTarget.Magnitude > 1 then
-                dirToTarget = dirToTarget.Unit
-                local dot = Camera.CFrame.LookVector:Dot(dirToTarget)
-                local isBehind = dot < 0
-
-                -- Skip behind targets if disabled
-                if isBehind and not self.AutoTargetScanBehind then continue end
-
-                local angleFactor = (1 - dot) * 100  -- 0=in-front, 200=behind
-                local distFactor = info.dist3D * 0.5
-                local hpFactor = (info.health / math.max(info.maxHealth, 1)) * 15
-                local score = angleFactor + distFactor + hpFactor
-
-                -- Deprioritize behind targets when FOV priority is on
-                if self.AutoTargetFOVPriority and isBehind then
-                    score = score + 300
-                end
-
-                if score < bestBehindScore then
-                    bestBehindScore = score
-                    bestBehind = player
-                end
+                bestTarget = player
             end
         end
     end
 
-    -- Prefer FOV targets; fall back to 360° targets
-    if best then
-        self.LockedPlayer = best
-        self._isTransitioningBehind = false
-    elseif bestBehind and self.AutoTargetEnabled then
-        self.LockedPlayer = bestBehind
-        -- Determine if target is behind for smooth transition
-        local bInfo = self:GetTargetInfo(bestBehind)
-        if bInfo then
-            local dir = (bInfo.worldPos - Camera.CFrame.Position)
-            if dir.Magnitude > 1 then
-                local dot = Camera.CFrame.LookVector:Dot(dir.Unit)
-                self._isTransitioningBehind = dot < 0.2
-                self._transitionStartTime = tick()
-            end
-        end
-    else
-        self.LockedPlayer = nil
-    end
-
+    self.LockedPlayer = bestTarget
     self.OccludedTime = 0
     self.LockAge = 0
-    self.LastTargetVisible = true
 end
 
 function Aimbot:Unlock(reason)
-    -- On kill: don't save dead body's screen pos (prevents poisoned center)
-    if reason ~= "dead" and self.LockedInfo then
-        self.LastTargetScreenPos = self.LockedInfo.screenPos
-    end
-    -- On kill: set death cooldown and clear prediction for dead target
     if reason == "dead" and self.LockedPlayer then
-        SetDeathCooldown(self.LockedPlayer)
-        ClearPrediction(self.LockedPlayer)
+        if SetDeathCooldown then SetDeathCooldown(self.LockedPlayer) end
+        if ClearPrediction then ClearPrediction(self.LockedPlayer) end
     end
     self.LockedPlayer = nil
-    self.LockedInfo = nil
+    self.LockedInfo   = nil
     self.OccludedTime = 0
-    self.LockAge = 0
-    self.LastTargetVisible = false
-    self._isTransitioningBehind = false
+    self.LockAge      = 0
 end
 
-function Aimbot:SmoothAim(targetWorldPos, dt)
+-- Prediksi Balistik & Kinematika Orde 2 (P = P0 + V*t + 0.5*A*t^2)
+function Aimbot:GetSharpenedPosition(info, dt)
+    local targetPos = info.worldPos
+    if not self.Prediction then return targetPos end
+
+    local char = info.character
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return targetPos end
+
+    -- Deteksi Ping Jaringan Otomatis
+    local ping = 0.04
+    pcall(function() ping = LocalPlayer:GetNetworkPing() end)
+    ping = math.clamp(ping or 0.04, 0.015, 0.25)
+
+    -- Dynamic Lead-Time: Latensi + Waktu Tempuh Peluru
+    local leadTime = (ping + (info.dist3D / math.max(self.BulletSpeed, 100))) * self.PredictionScale
+    local vel = root.AssemblyLinearVelocity
+    local accel = Vector3.zero
+
+    if PredictionData and PredictionData[info.player] then
+        accel = PredictionData[info.player].acceleration or Vector3.zero
+    end
+
+    local predicted = targetPos + (vel * leadTime) + (accel * (0.5 * leadTime * leadTime))
+
+    -- Kompensasi Gravitasi Lompat/Jatuh
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local isAirborne = hum and (hum:GetState() == Enum.HumanoidStateType.Freefall or hum:GetState() == Enum.HumanoidStateType.Jumping)
+    if isAirborne then
+        predicted = predicted + Vector3.new(0, -0.5 * self.GravityConstant * (leadTime ^ 2), 0)
+    end
+
+    -- Strict Overshoot Clamp (Mencegah flick acak saat musuh berhenti tiba-tiba)
+    local maxRadius = math.clamp(info.dist3D * 0.12, 1.5, 9.0)
+    if (predicted - targetPos).Magnitude > maxRadius then
+        predicted = targetPos + ((predicted - targetPos).Unit * maxRadius)
+    end
+
+    return predicted
+end
+
+function Aimbot:SmoothAim(targetPos, dt)
     if self.SnapMode then
-        Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetWorldPos)
+        Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetPos)
         return
     end
 
     local camPos = Camera.CFrame.Position
+    local targetVector = targetPos - camPos
+    if targetVector.Magnitude < 0.05 then return end
 
-    -- Humanization
+    -- Humanisasi Organik (Perlin Noise Micro-Offset)
     if self.Humanize and self.HumanizeStrength > 0 then
-        local t = tick()
-        local px = math.noise(t * 2.5, self.HumanizeSeed, 0) * self.HumanizeStrength
-        local py = math.noise(self.HumanizeSeed, t * 2.5, 0) * self.HumanizeStrength
-        local depth = (targetWorldPos - camPos).Magnitude
-        if depth > 1 then
-            local fov = math.rad(Camera.FieldOfView)
-            local ps = 2 * depth * math.tan(fov / 2) / Camera.ViewportSize.Y
-            targetWorldPos = targetWorldPos
-                + Camera.CFrame.RightVector * (px * ps)
-                + Camera.CFrame.UpVector * (py * ps)
-        end
+        local t = tick() * 3.2
+        local nx = math.noise(t, self.HumanizeSeed, 0) * self.HumanizeStrength
+        local ny = math.noise(self.HumanizeSeed, t, 0) * self.HumanizeStrength
+        local radAngle = math.rad(Camera.FieldOfView * 0.5)
+        local pixelSize = (2 * targetVector.Magnitude * math.tan(radAngle)) / Camera.ViewportSize.Y
+        targetPos = targetPos + (Camera.CFrame.RightVector * (nx * pixelSize)) + (Camera.CFrame.UpVector * (ny * pixelSize))
     end
 
-    -- Base smoothing alpha
-    local speed = 120 / math.max(self.Smoothing, 0.5)
-    local alpha = math.clamp(1 - math.exp(-speed * dt), 0.001, 1)
+    -- Exponential Damper
+    local tension = 160.0 / math.max(self.Smoothing, 0.4)
+    local alpha = math.clamp(1 - math.exp(-tension * dt), 0.01, 1) * self.AimStrength
 
-    -- Ramp-up ease-in
-    if self.LockAge < self.RampUpTime then
-        local ramp = math.clamp(self.LockAge / self.RampUpTime, 0.05, 1)
-        alpha = alpha * (ramp * ramp)
+    -- Ramp-up halus di awal penguncian
+    if self.LockAge < 0.12 then
+        local r = self.LockAge / 0.12
+        alpha = alpha * (r * r)
     end
 
-    -- Behind-target smooth transition (prevents jarring 180° snaps)
-    if self._isTransitioningBehind and self.AutoTargetSmoothTransition then
-        local transAge = tick() - self._transitionStartTime
-        local transitionDuration = 1.0 / math.max(self.AutoTargetTransitionSpeed, 0.5)
-        if transAge < transitionDuration then
-            local tRamp = math.clamp(transAge / transitionDuration, 0.05, 1)
-            alpha = alpha * (tRamp * tRamp) * math.clamp(self.AutoTargetBehindSpeed / 5, 0.2, 1)
-        else
-            self._isTransitioningBehind = false
-        end
+    -- Angular Velocity Clamping
+    local targetCF = CFrame.new(camPos, targetPos)
+    local currentLook = Camera.CFrame.LookVector
+    local targetLook  = targetCF.LookVector
+    local angle = math.acos(math.clamp(currentLook:Dot(targetLook), -1, 1))
+
+    local maxTurnAngle = math.rad(self.MaxAngularSpeed) * dt
+    if angle > 1e-4 and (angle * alpha) > maxTurnAngle then
+        alpha = maxTurnAngle / angle
     end
 
-    -- Sticky vis reduction
-    if self.StickyVis and self.OccludedTime > 0 then
-        alpha = alpha * self.StickyVisStrength
-    end
-
-    -- Aim strength
-    alpha = alpha * self.AimStrength
-
-    -- Angular velocity cap
-    if (camPos - targetWorldPos).Magnitude < 0.1 then return end
-    local targetCF = CFrame.new(camPos, targetWorldPos)
-    local dot = Camera.CFrame.LookVector:Dot(targetCF.LookVector)
-    local angle = math.acos(math.clamp(dot, -1, 1))
-    local maxAng = math.rad(self.MaxAngularSpeed) * dt
-    if angle > 0.001 and angle * alpha > maxAng then
-        alpha = maxAng / angle
-    end
-
-    alpha = math.clamp(alpha, 0.001, 1)
-    Camera.CFrame = Camera.CFrame:Lerp(targetCF, alpha)
+    Camera.CFrame = Camera.CFrame:Lerp(targetCF, math.clamp(alpha, 0.001, 1))
 end
 
 function Aimbot:Update(dt)
-    -- Dynamic FOV
-    if self.DynamicFOV then
-        local scale = Camera.FieldOfView / 70
-        local target = self.BaseFOVRadius * scale
-        if not self.LockedPlayer then target = target * 1.15 end
-        self.CurrentFOVRadius = self.CurrentFOVRadius + (target - self.CurrentFOVRadius) * math.min(dt * 8, 1)
-    else
-        self.CurrentFOVRadius = self.BaseFOVRadius
-    end
+    self.LastScreenCenter = Vector2.new(Camera.ViewportSize.X * 0.5, Camera.ViewportSize.Y * 0.5)
 
-    -- FOV circle
+    -- Dynamic FOV Scaling berdasarkan Zoom Kamera
+    local fovFactor = Camera.FieldOfView / 70.0
+    self.CurrentFOVRadius = self.BaseFOVRadius * fovFactor
+
     if FOVCircle then
-        local c = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-        FOVCircle.Position = c
-        FOVCircle.Radius = self.CurrentFOVRadius
-        FOVCircle.Visible = self.Enabled and self.ShowFOV
+        FOVCircle.Position = self.LastScreenCenter
+        FOVCircle.Radius   = self.CurrentFOVRadius
+        FOVCircle.Visible  = self.Enabled and self.ShowFOV
     end
 
-    if not self.Enabled then
-        if AimTracer then AimTracer.Visible = false end
-        HideTargetHUD()
-        return
-    end
+    if not self.Enabled then return end
 
     local isAiming = (self.AimKeyMode == "Always On") or self.AimKeyActive
     if not isAiming then
-        if AimTracer then AimTracer.Visible = false end
-        HideTargetHUD()
+        if self.LockedPlayer then self:Unlock() end
         return
     end
 
-    -- Validate lock
     if self.LockedPlayer then
         if not self:IsLockValid(dt) then
-            local wasDead = self.LockedPlayer and not IsAlive(self.LockedPlayer)
+            local dead = self.LockedPlayer and not IsAlive(self.LockedPlayer)
+            self:Unlock(dead and "dead" or nil)
             if self.AutoSwitch then
-                if wasDead then
-                    self:Unlock("dead")
-                else
-                    self:Unlock()
-                end
                 self:AcquireTarget()
-                if self.LockedPlayer then
-                    self.LockAge = self.AutoSwitchRampUp
-                end
-            else
-                self:Unlock(wasDead and "dead" or nil)
             end
         end
     end
 
-    if not self.LockedPlayer then self:AcquireTarget() end
+    if not self.LockedPlayer then
+        self:AcquireTarget()
+    end
 
-    -- Aim update
     if self.LockedPlayer then
         self.LockAge = self.LockAge + dt
         local info = self:GetTargetInfo(self.LockedPlayer)
         if info then
             self.LockedInfo = info
-            UpdatePrediction(self.LockedPlayer, info.worldPos, dt)
-            local aimPos = self.Prediction and PredictPosition(self.LockedPlayer, info.worldPos, dt) or info.worldPos
-            if typeof(aimPos) == "Vector3" and aimPos.X == aimPos.X and aimPos.Y == aimPos.Y and aimPos.Z == aimPos.Z then
-                self:SmoothAim(aimPos, dt)
-            end
-
-            if AimTracer then
-                local vp = Camera.ViewportSize
-                AimTracer.From = Vector2.new(vp.X / 2, vp.Y)
-                AimTracer.To = info.screenPos
-                AimTracer.Color = GameMode:GetTeamDisplayColor(self.LockedPlayer)
-                AimTracer.Visible = self.ShowTracer
-            end
-            if self.ShowTargetHUD then
-                UpdateTargetHUD(info, self.LastTargetVisible)
-            else
-                HideTargetHUD()
-            end
+            if UpdatePrediction then UpdatePrediction(self.LockedPlayer, info.worldPos, dt) end
+            local aimPos = self:GetSharpenedPosition(info, dt)
+            self:SmoothAim(aimPos, dt)
         else
-            local wasDead = self.LockedPlayer and not IsAlive(self.LockedPlayer)
-            self:Unlock(wasDead and "dead" or nil)
+            self:Unlock()
         end
-    else
-        self.LockedInfo = nil
-        if AimTracer then AimTracer.Visible = false end
-        HideTargetHUD()
     end
 end
 
 -- ══════════════════════════════════════════════════════════════
---  SECTION 10B: TRIGGER ASSIST (Click-to-Track)
---  No tracking normally — only aims when LMB (shoot) is pressed
---  Smooth, natural, stealth-friendly aim correction per click
+--  SECTION 10B: OPTIMIZED TRIGGER ASSIST (CLICK-TO-TRACK)
 -- ══════════════════════════════════════════════════════════════
 
-local TriggerAssist = {
+TriggerAssist = {
     Enabled       = false,
-    Strength      = 0.40,    -- Base aim pull (0.1=very subtle, 1.0=full)
-    Smoothing     = 10,      -- Higher = smoother/slower correction
-    MaxFOV        = 250,     -- Max screen-space search radius (px)
-    MaxDistance   = 500,     -- Max 3D distance (studs)
-    PulseDuration = 0.25,    -- Aim pulse duration per click (seconds)
-    FadeOut       = true,    -- Gradually reduce strength during pulse
-    HoldMode      = true,    -- true=track while held, false=pulse per click
-    UsePrediction = true,    -- Use prediction engine for head tracking
-    MaxAngSpeed   = 400,     -- Max angular speed (deg/s) — keeps it natural
-    EaseInTime    = 0.06,    -- Ease-in at start of each pulse (seconds)
-
-    -- Internal state
+    Strength      = 0.48,
+    Smoothing     = 6.0,
+    MaxDistance   = 800,
     _active       = false,
     _target       = nil,
-    _pulseStart   = 0,
+    _clickTime    = 0,
 }
 
 function TriggerAssist:FindTarget()
-    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    local best, bestScore = nil, math.huge
+    local center = Aimbot.LastScreenCenter
+    local best, bestDist = nil, math.huge
+    local maxSearchRadius = Aimbot.CurrentFOVRadius * 1.3
 
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player == LocalPlayer or not IsAlive(player) then continue end
-        if IsInDeathCooldown(player) then continue end
-        if Aimbot.TeamCheck and not GameMode:IsEnemy(player) then continue end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == LocalPlayer or not IsAlive(p) then continue end
+        if Aimbot.TeamCheck and not GameMode:IsEnemy(p) then continue end
 
-        local char = player.Character
-        local head = char and char:FindFirstChild("Head")
-        if not head or not head.Parent then continue end
+        local info = Aimbot:GetTargetInfo(p)
+        if not info or not info.onScreen or info.depth <= 0 then continue end
+        if info.dist3D > self.MaxDistance then continue end
 
-        local worldPos = head.Position
-
-        -- Anti-ragdoll: use frozen position if insane
-        if not IsPositionSane(player, worldPos) then
-            local frozen = GetFrozenPosition(player)
-            if frozen then worldPos = frozen else continue end
-        else
-            CacheValidPosition(player, worldPos)
-        end
-
-        local sp3, onScreen = Camera:WorldToViewportPoint(worldPos)
-        if not onScreen or sp3.Z <= 0 then continue end
-
-        local screenPos = Vector2.new(sp3.X, sp3.Y)
-        local screenDist = (screenPos - center).Magnitude
-        if screenDist > self.MaxFOV then continue end
-
-        local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        local dist3D = myRoot and (worldPos - myRoot.Position).Magnitude or math.huge
-        if dist3D > self.MaxDistance then continue end
-
-        -- Vis check (optional, uses Aimbot's setting)
-        if Aimbot.VisCheck and not IsVisibleAdvanced(char, worldPos) then continue end
-
-        -- Score: prefer closest to crosshair, slight distance weight
-        local score = screenDist + dist3D * 0.03
-        if score < bestScore then
-            bestScore = score
-            best = player
+        local sd = (info.screenPos - center).Magnitude
+        if sd <= maxSearchRadius and sd < bestDist then
+            bestDist = sd
+            best = p
         end
     end
-
     return best
-end
-
-function TriggerAssist:GetHeadWorldPos(player)
-    if not player or not IsAlive(player) then return nil end
-    local char = player.Character
-    local head = char and char:FindFirstChild("Head")
-    if not head or not head.Parent then return nil end
-
-    local worldPos = head.Position
-
-    -- Anti-ragdoll
-    if not IsPositionSane(player, worldPos) then
-        local frozen = GetFrozenPosition(player)
-        if frozen then return frozen end
-        return nil
-    end
-
-    return worldPos
 end
 
 function TriggerAssist:Update(dt)
     if not self.Enabled or not self._active then return end
-
-    -- Don't interfere if regular aimbot is actively tracking
     if Aimbot.Enabled and Aimbot.LockedPlayer then return end
 
-    -- Validate current target or re-acquire
-    if self._target then
-        if not IsAlive(self._target) or IsInDeathCooldown(self._target) then
-            self._target = self:FindTarget()
-            self._pulseStart = tick()
-        end
+    if not self._target or not IsAlive(self._target) then
+        self._target = self:FindTarget()
+        self._clickTime = tick()
     end
 
     if not self._target then return end
-
-    -- Get head position
-    local worldPos = self:GetHeadWorldPos(self._target)
-    if not worldPos then
+    local info = Aimbot:GetTargetInfo(self._target)
+    if not info then
         self._target = nil
         return
     end
 
-    -- Apply prediction for accurate tracking
-    if self.UsePrediction then
-        UpdatePrediction(self._target, worldPos, dt)
-        local predicted = PredictPosition(self._target, worldPos, dt)
-        if typeof(predicted) == "Vector3" and predicted == predicted then
-            worldPos = predicted
-        end
-    end
-
-    -- Calculate pulse timing
-    local elapsed = tick() - self._pulseStart
-
-    -- Per-click pulse mode: expire after duration
-    if not self.HoldMode and elapsed > self.PulseDuration then
-        return
-    end
-
-    -- Calculate aim strength
-    local strength = self.Strength
-
-    -- Fade-out over pulse duration (natural decay)
-    if self.FadeOut and not self.HoldMode then
-        local fade = 1 - math.clamp(elapsed / self.PulseDuration, 0, 1)
-        fade = fade * fade  -- Quadratic fade for smooth decay
-        strength = strength * fade
-        if strength < 0.01 then return end
-    end
-
-    -- Smooth aim toward head
+    local aimPos = Aimbot:GetSharpenedPosition(info, dt)
     local camPos = Camera.CFrame.Position
-    local toTarget = worldPos - camPos
-    if toTarget.Magnitude < 0.1 then return end
+    local targetCF = CFrame.new(camPos, aimPos)
 
-    local speed = 120 / math.max(self.Smoothing, 0.5)
-    local alpha = math.clamp(1 - math.exp(-speed * dt), 0.001, 1)
-    alpha = alpha * strength
+    local speed = 140.0 / math.max(self.Smoothing, 0.5)
+    local alpha = math.clamp(1 - math.exp(-speed * dt), 0.01, 0.85) * self.Strength
 
-    -- Ease-in at start of pulse (prevents instant snap on click)
-    local pulseAge = math.clamp(elapsed / math.max(self.EaseInTime, 0.01), 0, 1)
-    alpha = alpha * (pulseAge * pulseAge)
-
-    -- Angular speed cap — keeps movement natural
-    local targetCF = CFrame.new(camPos, worldPos)
-    local dot = Camera.CFrame.LookVector:Dot(targetCF.LookVector)
-    local angle = math.acos(math.clamp(dot, -1, 1))
-    local maxAng = math.rad(self.MaxAngSpeed) * dt
-    if angle > 0.001 and angle * alpha > maxAng then
-        alpha = maxAng / angle
-    end
-
-    alpha = math.clamp(alpha, 0.001, 0.85)
     Camera.CFrame = Camera.CFrame:Lerp(targetCF, alpha)
 end
+
+-- Default Initialization
+Aimbot:ApplyPreset("Standard")
 
 -- ══════════════════════════════════════════════════════════════
 --  SECTION 11: SMART ESP SYSTEM
